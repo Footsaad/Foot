@@ -1,0 +1,706 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Tirs au But - Mon Fils (Réaliste)</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#1e3c32">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #1a3a1a;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      overflow: hidden;
+      touch-action: none;
+      user-select: none;
+    }
+    .game-container {
+      width: 100%;
+      max-width: 450px;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      background: #0f2b0f;
+      box-shadow: 0 0 30px rgba(0,0,0,0.8);
+      overflow: hidden;
+    }
+
+    /* Barre supérieure */
+    .top-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 12px;
+      background: rgba(0,0,0,0.7);
+      z-index: 10;
+    }
+    .team {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: white;
+    }
+    .avatar {
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      background: #555;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      border: 2px solid gold;
+    }
+    .team-name {
+      font-weight: bold;
+      font-size: 0.9rem;
+      max-width: 60px;
+      overflow: hidden;
+    }
+    .score {
+      font-size: 2rem;
+      font-weight: bold;
+      color: gold;
+      margin-left: 4px;
+    }
+
+    /* Scène du terrain */
+    .stadium {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+      background: radial-gradient(circle at 50% 80%, #2e6b2e, #1a4a1a);
+      transition: transform 0.8s ease;
+      transform-origin: center;
+    }
+    .stadium.zoom-goal {
+      transform: scale(1.8) translate(20px, -30px);
+    }
+    .stadium.zoom-keeper {
+      transform: scale(1.6) translate(-40px, 10px);
+    }
+
+    /* Gazon texturé */
+    .grass {
+      position: absolute;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background: repeating-linear-gradient(0deg, rgba(255,255,255,0.03) 0px, rgba(255,255,255,0.03) 2px, transparent 2px, transparent 4px),
+                  repeating-linear-gradient(90deg, rgba(255,255,255,0.02) 0px, rgba(255,255,255,0.02) 1px, transparent 1px, transparent 3px);
+      pointer-events: none;
+    }
+
+    /* But (lucarne) */
+    .goal {
+      position: absolute;
+      left: 8px;
+      top: 10%;
+      width: 100px;
+      height: 60%;
+      border: 8px solid white;
+      border-left: none;
+      border-radius: 0 20px 20px 0;
+      background: rgba(0,0,0,0.3);
+      box-shadow: inset 0 0 20px rgba(0,0,0,0.5);
+    }
+    .goal::after {
+      content: '';
+      position: absolute;
+      top: -8px; right: -8px; bottom: -8px; left: 0;
+      border: 2px dashed rgba(255,255,255,0.4);
+      border-left: none;
+      border-radius: 0 20px 20px 0;
+      pointer-events: none;
+    }
+    /* Filet */
+    .net {
+      position: absolute;
+      top: 10%; left: 8px; width: 100px; height: 60%;
+      background: linear-gradient(45deg, rgba(255,255,255,0.15) 25%, transparent 25%),
+                  linear-gradient(-45deg, rgba(255,255,255,0.15) 25%, transparent 25%);
+      background-size: 10px 10px;
+      border-radius: 0 20px 20px 0;
+      pointer-events: none;
+    }
+
+    /* Joueurs */
+    .player {
+      position: absolute;
+      width: 40px;
+      height: 70px;
+      z-index: 5;
+      transition: left 0.5s, top 0.2s;
+    }
+    .striker {
+      left: 65%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+    }
+    .goalkeeper {
+      left: 70px;
+      top: 50%;
+      transform: translate(-50%, -50%);
+    }
+    .player-body {
+      width: 26px;
+      height: 40px;
+      background: #e74c3c;
+      border-radius: 4px 4px 0 0;
+      margin: 0 auto;
+      position: relative;
+      top: 15px;
+    }
+    .goalkeeper .player-body {
+      background: #2ecc71;
+    }
+    .player-head {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background-size: cover;
+      background-position: center;
+      position: absolute;
+      top: -10px;
+      left: -1px;
+      border: 2px solid #fff;
+    }
+    .player-legs {
+      display: flex;
+      justify-content: space-between;
+      width: 26px;
+      position: absolute;
+      bottom: -10px;
+    }
+    .player-leg {
+      width: 6px;
+      height: 18px;
+      background: #2c3e50;
+      border-radius: 2px;
+    }
+
+    /* Ballon */
+    .ball {
+      position: absolute;
+      width: 18px;
+      height: 18px;
+      background: white;
+      border-radius: 50%;
+      border: 2px solid #000;
+      box-shadow: 0 0 5px black;
+      z-index: 20;
+      transition: left 0.6s cubic-bezier(0.25, 0.1, 0.25, 1), 
+                  top 0.6s cubic-bezier(0.25, 0.1, 0.25, 1),
+                  opacity 0.5s;
+    }
+
+    /* Canvas pour le tracé */
+    .draw-canvas {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 30;
+      pointer-events: auto;
+      touch-action: none;
+    }
+
+    /* Contrôles */
+    .controls {
+      background: rgba(0,0,0,0.8);
+      padding: 8px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .instruction {
+      color: white;
+      text-align: center;
+      font-weight: bold;
+      font-size: 0.9rem;
+    }
+    .btn-group {
+      display: flex;
+      justify-content: center;
+      gap: 8px;
+    }
+    .btn {
+      background: #f0a500;
+      border: none;
+      color: #1e3c32;
+      padding: 10px 18px;
+      border-radius: 30px;
+      font-weight: bold;
+      cursor: pointer;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+    }
+    .btn:active { transform: scale(0.95); }
+    .result-message {
+      text-align: center;
+      font-size: 1.3rem;
+      font-weight: bold;
+      color: gold;
+      min-height: 2rem;
+    }
+    .shoot-history {
+      display: flex;
+      justify-content: center;
+      gap: 5px;
+      flex-wrap: wrap;
+    }
+    .circle {
+      width: 22px; height: 22px; border-radius: 50%;
+      background: gray; display: flex; align-items: center;
+      justify-content: center; font-size: 0.7rem;
+    }
+    .circle.goal { background: #2ecc71; }
+    .circle.save { background: #e74c3c; }
+    input[type="file"] { display: none; }
+
+    /* Replay */
+    .replay-overlay {
+      position: absolute;
+      top: 0; left: 0; width: 100%; height: 100%;
+      pointer-events: none;
+      opacity: 0;
+      z-index: 50;
+      transition: opacity 0.3s;
+    }
+    .replay-overlay.active {
+      opacity: 1;
+    }
+  </style>
+</head>
+<body>
+<div class="game-container">
+  <!-- Top bar -->
+  <div class="top-bar">
+    <div class="team" id="teamA">
+      <div class="avatar" id="avatarA">👤</div>
+      <span class="team-name" contenteditable="true" id="teamAName">Fils</span>
+      <span class="score" id="scoreA">0</span>
+      <input type="file" id="fileInputA" accept="image/*" hidden>
+    </div>
+    <div class="team" id="teamB">
+      <div class="avatar" id="avatarB">👤</div>
+      <span class="team-name" contenteditable="true" id="teamBName">Adverse</span>
+      <span class="score" id="scoreB">0</span>
+      <input type="file" id="fileInputB" accept="image/*" hidden>
+    </div>
+  </div>
+
+  <!-- Terrain -->
+  <div class="stadium" id="stadium">
+    <div class="grass"></div>
+    <div class="goal"></div>
+    <div class="net"></div>
+    
+    <!-- Joueurs -->
+    <div class="player striker" id="striker">
+      <div class="player-body">
+        <div class="player-head" id="strikerHead"></div>
+        <div class="player-legs">
+          <div class="player-leg"></div>
+          <div class="player-leg"></div>
+        </div>
+      </div>
+    </div>
+    <div class="player goalkeeper" id="goalkeeper">
+      <div class="player-body">
+        <div class="player-head" id="keeperHead"></div>
+        <div class="player-legs">
+          <div class="player-leg"></div>
+          <div class="player-leg"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Ballon -->
+    <div class="ball" id="ball" style="left:70%; top:50%;"></div>
+    
+    <!-- Canvas pour dessiner le tir -->
+    <canvas class="draw-canvas" id="drawCanvas"></canvas>
+  </div>
+
+  <!-- Contrôles -->
+  <div class="controls">
+    <div class="instruction" id="instruction">Trace une flèche depuis le ballon</div>
+    <div class="btn-group" id="btnsDive" style="display:none;">
+      <button class="btn" onclick="keeperDive('gauche')">🧤 Plonge G</button>
+      <button class="btn" onclick="keeperDive('centre')">🧤 Centre</button>
+      <button class="btn" onclick="keeperDive('droite')">🧤 Plonge D</button>
+    </div>
+    <div class="result-message" id="resultMessage"></div>
+    <div class="shoot-history" id="history"></div>
+    <button class="btn" onclick="resetGame()" style="background:#c0392b;color:white;">🔄 Nouveau match</button>
+  </div>
+
+  <!-- Replay overlay -->
+  <div class="replay-overlay" id="replayOverlay"></div>
+</div>
+
+<script>
+  // État du jeu
+  let teamA = { name: "Fils", score: 0, shots: [], avatar: null };
+  let teamB = { name: "Adverse", score: 0, shots: [], avatar: null };
+  let currentShooter = 'A';
+  let currentKeeper = 'B';
+  let phase = 'shoot';
+  let chosenDirection = null;
+  let suddenDeath = false;
+  const MAX_SHOTS = 5;
+
+  // Références DOM
+  const stadium = document.getElementById('stadium');
+  const ball = document.getElementById('ball');
+  const strikerEl = document.getElementById('striker');
+  const goalkeeperEl = document.getElementById('goalkeeper');
+  const strikerHead = document.getElementById('strikerHead');
+  const keeperHead = document.getElementById('keeperHead');
+  const drawCanvas = document.getElementById('drawCanvas');
+  const ctx = drawCanvas.getContext('2d');
+  const btnsDive = document.getElementById('btnsDive');
+  const instructionEl = document.getElementById('instruction');
+  const resultMsg = document.getElementById('resultMessage');
+  const historyDiv = document.getElementById('history');
+  const replayOverlay = document.getElementById('replayOverlay');
+
+  // Configuration canvas
+  let drawing = false;
+  let startX, startY, endX, endY;
+  
+  function resizeCanvas() {
+    const rect = stadium.getBoundingClientRect();
+    drawCanvas.width = rect.width;
+    drawCanvas.height = rect.height;
+    drawCanvas.style.width = rect.width + 'px';
+    drawCanvas.style.height = rect.height + 'px';
+  }
+  window.addEventListener('resize', resizeCanvas);
+  resizeCanvas();
+
+  // Gestion du tracé
+  function handleStart(e) {
+    if (phase !== 'shoot') return;
+    e.preventDefault();
+    const pos = getEventPos(e);
+    // Vérifier si on commence près du ballon
+    const ballRect = ball.getBoundingClientRect();
+    const stadiumRect = stadium.getBoundingClientRect();
+    const ballX = ballRect.left + ballRect.width/2 - stadiumRect.left;
+    const ballY = ballRect.top + ballRect.height/2 - stadiumRect.top;
+    const dist = Math.hypot(pos.x - ballX, pos.y - ballY);
+    if (dist < 50) {
+      drawing = true;
+      startX = pos.x;
+      startY = pos.y;
+    }
+  }
+
+  function handleMove(e) {
+    if (!drawing || phase !== 'shoot') return;
+    e.preventDefault();
+    const pos = getEventPos(e);
+    endX = pos.x;
+    endY = pos.y;
+    drawArrow();
+  }
+
+  function handleEnd(e) {
+    if (!drawing || phase !== 'shoot') return;
+    e.preventDefault();
+    drawing = false;
+    const dx = endX - startX;
+    const dy = endY - startY;
+    const distance = Math.hypot(dx, dy);
+    if (distance < 15) {
+      clearCanvas();
+      return; // trop petit, annuler
+    }
+    // Déterminer direction selon l'angle
+    let angle = Math.atan2(dy, dx) * (180 / Math.PI);
+    // On veut que le ballon aille vers la gauche (but). Donc dx devrait être négatif si on part du ballon vers la gauche.
+    // Normalement le tracé part du ballon vers l'extérieur. Si l'utilisateur tire vers la gauche, dx sera négatif.
+    // On définit des zones : gauche si angle entre -160° et -20° (haut-gauche à bas-gauche), centre si autour de -90°, droite si angle entre -20° et 20° mais cela semble contre-intuitif.
+    // Simplifions : on calcule la direction principale : left, center, right par rapport au but.
+    // On va utiliser la fin du trait par rapport au point de départ.
+    if (dx > -20) {
+      // vers la droite ou trop peu horizontal -> on annule ou on considère centre?
+      chosenDirection = 'centre';
+    } else {
+      if (dy < -20) chosenDirection = 'gauche';  // haut-gauche
+      else if (dy > 20) chosenDirection = 'droite'; // bas-gauche
+      else chosenDirection = 'centre';
+    }
+    clearCanvas();
+    // Animation du tireur
+    strikerEl.style.transform = 'translate(-55%, -50%) rotate(-10deg)';
+    setTimeout(() => { strikerEl.style.transform = 'translate(-50%, -50%) rotate(0)'; }, 200);
+    // Passer en phase dive
+    phase = 'dive';
+    updateUI();
+  }
+
+  function getEventPos(e) {
+    const rect = stadium.getBoundingClientRect();
+    const touch = e.touches ? e.touches[0] : e;
+    return {
+      x: touch.clientX - rect.left,
+      y: touch.clientY - rect.top
+    };
+  }
+
+  function drawArrow() {
+    clearCanvas();
+    ctx.beginPath();
+    ctx.moveTo(startX, startY);
+    ctx.lineTo(endX, endY);
+    ctx.strokeStyle = 'rgba(255,255,0,0.9)';
+    ctx.lineWidth = 4;
+    ctx.stroke();
+    // tête de flèche
+    const angle = Math.atan2(endY - startY, endX - startX);
+    const arrowSize = 12;
+    ctx.fillStyle = 'yellow';
+    ctx.beginPath();
+    ctx.moveTo(endX, endY);
+    ctx.lineTo(endX - arrowSize * Math.cos(angle - Math.PI/6), endY - arrowSize * Math.sin(angle - Math.PI/6));
+    ctx.lineTo(endX - arrowSize * Math.cos(angle + Math.PI/6), endY - arrowSize * Math.sin(angle + Math.PI/6));
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  function clearCanvas() {
+    ctx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+  }
+
+  // Événements canvas
+  drawCanvas.addEventListener('touchstart', handleStart, {passive: false});
+  drawCanvas.addEventListener('touchmove', handleMove, {passive: false});
+  drawCanvas.addEventListener('touchend', handleEnd);
+  drawCanvas.addEventListener('mousedown', handleStart);
+  drawCanvas.addEventListener('mousemove', (e) => { if (drawing) handleMove(e); });
+  drawCanvas.addEventListener('mouseup', handleEnd);
+  drawCanvas.addEventListener('mouseleave', () => { drawing = false; clearCanvas(); });
+
+  // Gardien plonge (mode manuel)
+  function keeperDive(keeperDir) {
+    if (phase !== 'dive') return;
+    executeShot(keeperDir);
+  }
+
+  function executeShot(keeperDir) {
+    phase = 'anim';
+    updateUI();
+    // Déplacer gardien
+    if (keeperDir === 'gauche') goalkeeperEl.style.left = '30px';
+    else if (keeperDir === 'droite') goalkeeperEl.style.left = '100px';
+    else goalkeeperEl.style.left = '70px';
+
+    // Trajectoire du ballon selon direction choisie
+    const targets = {
+      'gauche': { left: '10%', top: '20%' },
+      'centre': { left: '15%', top: '50%' },
+      'droite': { left: '10%', top: '80%' }
+    };
+    const target = targets[chosenDirection];
+    ball.style.left = target.left;
+    ball.style.top = target.top;
+
+    const isGoal = (chosenDirection !== keeperDir);
+    setTimeout(() => {
+      if (isGoal) {
+        resultMsg.textContent = '⚽ BUUUUT !';
+        ball.style.opacity = '0';
+        ball.style.left = '5%';
+        // Effet lucarne : zoom sur le but
+        stadium.classList.add('zoom-goal');
+        // Replay après 1s
+        setTimeout(() => {
+          playReplay(target);
+        }, 800);
+      } else {
+        resultMsg.textContent = '🧤 Arrêt !';
+        ball.style.left = '40%';
+        stadium.classList.add('zoom-keeper');
+      }
+
+      // Mise à jour scores
+      if (currentShooter === 'A') {
+        teamA.shots.push(isGoal);
+        if (isGoal) teamA.score++;
+      } else {
+        teamB.shots.push(isGoal);
+        if (isGoal) teamB.score++;
+      }
+
+      setTimeout(() => {
+        resetAfterShot();
+      }, 1500);
+    }, 600);
+  }
+
+  function playReplay(target) {
+    replayOverlay.classList.add('active');
+    // Rejouer la trajectoire du ballon au ralenti
+    ball.style.transition = 'left 1.2s ease, top 1.2s ease, opacity 0.4s';
+    ball.style.left = '70%';
+    ball.style.top = '50%';
+    ball.style.opacity = '1';
+    setTimeout(() => {
+      ball.style.left = target.left;
+      ball.style.top = target.top;
+      ball.style.opacity = '0';
+    }, 100);
+    setTimeout(() => {
+      ball.style.transition = 'left 0.6s cubic-bezier(0.25, 0.1, 0.25, 1), top 0.6s cubic-bezier(0.25, 0.1, 0.25, 1), opacity 0.5s';
+      replayOverlay.classList.remove('active');
+      stadium.classList.remove('zoom-goal');
+    }, 1800);
+  }
+
+  function resetAfterShot() {
+    ball.style.left = '70%';
+    ball.style.top = '50%';
+    ball.style.opacity = '1';
+    goalkeeperEl.style.left = '70px';
+    stadium.classList.remove('zoom-goal', 'zoom-keeper');
+    // Rotation équipe
+    if (currentShooter === 'A') {
+      currentShooter = 'B';
+      currentKeeper = 'A';
+    } else {
+      currentShooter = 'A';
+      currentKeeper = 'B';
+    }
+    // Vérifier fin
+    if (!suddenDeath && teamA.shots.length === MAX_SHOTS && teamB.shots.length === MAX_SHOTS) {
+      if (teamA.score === teamB.score) {
+        suddenDeath = true;
+        resultMsg.textContent = '🔥 Égalité - Mort subite !';
+      } else {
+        phase = 'end';
+        updateUI();
+        return;
+      }
+    }
+    if (suddenDeath && teamA.shots.length === teamB.shots.length && teamA.score !== teamB.score) {
+      phase = 'end';
+      updateUI();
+      return;
+    }
+    phase = 'shoot';
+    resultMsg.textContent = '';
+    updateUI();
+  }
+
+  function updateUI() {
+    document.getElementById('scoreA').textContent = teamA.score;
+    document.getElementById('scoreB').textContent = teamB.score;
+    document.getElementById('teamAName').textContent = teamA.name || 'Équipe A';
+    document.getElementById('teamBName').textContent = teamB.name || 'Équipe B';
+
+    // Mettre à jour les têtes des joueurs avec les avatars
+    if (teamA.avatar) {
+      strikerHead.style.backgroundImage = `url(${teamA.avatar})`;
+    } else {
+      strikerHead.style.backgroundImage = '';
+    }
+    if (teamB.avatar) {
+      keeperHead.style.backgroundImage = `url(${teamB.avatar})`;
+    } else {
+      keeperHead.style.backgroundImage = '';
+    }
+
+    if (phase === 'shoot') {
+      btnsDive.style.display = 'none';
+      instructionEl.textContent = `⚽ Tire, trace une flèche (${currentShooter === 'A' ? teamA.name : teamB.name})`;
+    } else if (phase === 'dive') {
+      btnsDive.style.display = 'flex';
+      instructionEl.textContent = `🧤 Gardien (${currentKeeper === 'A' ? teamA.name : teamB.name}) plonge !`;
+    } else if (phase === 'anim' || phase === 'end') {
+      btnsDive.style.display = 'none';
+      instructionEl.textContent = '';
+    }
+
+    // Historique
+    historyDiv.innerHTML = '';
+    const maxLen = Math.max(teamA.shots.length, teamB.shots.length);
+    for (let i = 0; i < maxLen; i++) {
+      if (teamA.shots[i] !== undefined) {
+        const c = document.createElement('div');
+        c.className = `circle ${teamA.shots[i] ? 'goal' : 'save'}`;
+        c.textContent = 'A'+(i+1);
+        historyDiv.appendChild(c);
+      }
+      if (teamB.shots[i] !== undefined) {
+        const c = document.createElement('div');
+        c.className = `circle ${teamB.shots[i] ? 'goal' : 'save'}`;
+        c.textContent = 'B'+(i+1);
+        historyDiv.appendChild(c);
+      }
+    }
+
+    if (phase === 'end') {
+      let winner;
+      if (teamA.score > teamB.score) winner = teamA.name;
+      else if (teamB.score > teamA.score) winner = teamB.name;
+      if (winner) resultMsg.textContent = `🏆 ${winner} gagne !`;
+    }
+  }
+
+  function resetGame() {
+    teamA.score = 0; teamA.shots = [];
+    teamB.score = 0; teamB.shots = [];
+    currentShooter = 'A'; currentKeeper = 'B';
+    phase = 'shoot'; chosenDirection = null;
+    suddenDeath = false;
+    resultMsg.textContent = '';
+    ball.style.left = '70%'; ball.style.top = '50%'; ball.style.opacity = '1';
+    goalkeeperEl.style.left = '70px';
+    stadium.classList.remove('zoom-goal', 'zoom-keeper');
+    updateUI();
+  }
+
+  // Gestion avatars
+  function setupAvatar(avatarEl, fileInput, teamKey) {
+    avatarEl.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          const dataUrl = ev.target.result;
+          avatarEl.style.backgroundImage = `url(${dataUrl})`;
+          avatarEl.style.backgroundSize = 'cover';
+          avatarEl.style.backgroundPosition = 'center';
+          avatarEl.innerHTML = '';
+          if (teamKey === 'A') teamA.avatar = dataUrl;
+          else teamB.avatar = dataUrl;
+          updateUI();
+        };
+        reader.readAsDataURL(file);
+      }
+    });
+  }
+  setupAvatar(document.getElementById('avatarA'), document.getElementById('fileInputA'), 'A');
+  setupAvatar(document.getElementById('avatarB'), document.getElementById('fileInputB'), 'B');
+
+  // Noms d'équipe éditables
+  document.getElementById('teamAName').addEventListener('input', function(e) {
+    teamA.name = e.target.textContent.trim() || 'Équipe A';
+  });
+  document.getElementById('teamBName').addEventListener('input', function(e) {
+    teamB.name = e.target.textContent.trim() || 'Équipe B';
+  });
+
+  // Initialisation
+  resizeCanvas();
+  updateUI();
+</script>
+</body>
+</html>
