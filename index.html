@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>Saad vs Clones</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: #111; display: flex; justify-content: center; align-items: center; min-height: 100vh; font-family: 'Courier New', monospace; overflow: hidden; }
+        #gameContainer { position: relative; width: 100vw; height: 100vh; max-width: 800px; max-height: 100vh; background: #1a1a2e; border: 2px solid #ff00ff; box-shadow: 0 0 20px #ff00ff80; }
+        canvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
+        #ui { position: absolute; top: 10px; left: 10px; right: 10px; display: flex; justify-content: space-between; align-items: center; color: #fff; font-size: 1.2rem; pointer-events: none; }
+        #ui > div { background: #000000aa; padding: 8px 15px; border-radius: 20px; backdrop-filter: blur(5px); }
+        #modeSelector { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; z-index: 10; }
+        .modeBtn { background: #ff00ff; color: white; border: none; padding: 10px 20px; border-radius: 30px; font-weight: bold; cursor: pointer; transition: 0.2s; text-transform: uppercase; letter-spacing: 1px; }
+        .modeBtn.active { background: #00ffff; color: #000; box-shadow: 0 0 15px #00ffff; }
+        .modeBtn:hover { transform: scale(1.05); }
+        #message { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #fff; font-size: 2rem; background: #000000cc; padding: 20px 40px; border-radius: 20px; display: none; z-index: 20; text-align: center; }
+        #dropZone { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 5; pointer-events: none; }
+        #dropZone.active { pointer-events: auto; background: rgba(255,255,255,0.05); }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <canvas id="gameCanvas"></canvas>
+        <div id="ui">
+            <div id="scoreDisplay">Score: 0</div>
+            <div id="livesDisplay">❤️❤️❤️</div>
+        </div>
+        <div id="modeSelector">
+            <button class="modeBtn active" data-mode="classic">Classique</button>
+            <button class="modeBtn" data-mode="survival">Survie</button>
+            <button class="modeBtn" data-mode="chaos">Chaos</button>
+        </div>
+        <div id="message"></div>
+    </div>
+
+    <script>
+        (function() {
+            // ---------- Configuration ----------
+            const canvas = document.getElementById('gameCanvas');
+            const ctx = canvas.getContext('2d');
+            const scoreDisplay = document.getElementById('scoreDisplay');
+            const livesDisplay = document.getElementById('livesDisplay');
+            const messageDiv = document.getElementById('message');
+            const modeButtons = document.querySelectorAll('.modeBtn');
+
+            // Image du visage (à charger depuis assets/face.png)
+            let faceImage = new Image();
+            faceImage.src = 'assets/face.png'; // Place ton image ici
+            let imageLoaded = false;
+            faceImage.onload = () => { imageLoaded = true; };
+            faceImage.onerror = () => {
+                // Fallback : dessine un visage basique si l'image est absente
+                console.warn('Image face.png non trouvée. Utilisation d\'un visage dessiné.');
+                // Crée un canvas temporaire pour générer un smiley
+                const fallbackCanvas = document.createElement('canvas');
+                fallbackCanvas.width = 128;
+                fallbackCanvas.height = 128;
+                const fctx = fallbackCanvas.getContext('2d');
+                fctx.fillStyle = '#ffcc00';
+                fctx.beginPath();
+                fctx.arc(64,64,60,0,Math.PI*2);
+                fctx.fill();
+                fctx.fillStyle = 'black';
+                fctx.beginPath();
+                fctx.arc(40,50,8,0,Math.PI);
+                fctx.fill();
+                fctx.beginPath();
+                fctx.arc(88,50,8,0,Math.PI);
+                fctx.fill();
+                fctx.fillStyle = 'white';
+                fctx.beginPath();
+                fctx.arc(40,48,3,0,Math.PI*2);
+                fctx.fill();
+                fctx.beginPath();
+                fctx.arc(88,48,3,0,Math.PI*2);
+                fctx.fill();
+                fctx.strokeStyle = 'black';
+                fctx.lineWidth = 4;
+                fctx.beginPath();
+                fctx.arc(64,80,20,0.1,Math.PI-0.1);
+                fctx.stroke();
+                faceImage = fallbackCanvas;
+                imageLoaded = true;
+            };
+
+            // Paramètres du jeu
+            const CONFIG = {
+                classic: { maxClones: 15, spawnInterval: 1200, lives: 999, speedMultiplier: 1.0, chaosLevel: 1 },
+                survival: { maxClones: 12, spawnInterval: 1500, lives: 3, speedMultiplier: 0.9, chaosLevel: 1 },
+                chaos: { maxClones: 30, spawnInterval: 600, lives: 5, speedMultiplier: 1.5, chaosLevel: 3 }
+            };
+
+            let currentMode = 'classic';
+            let gameState = {
+                active: false,
+                score: 0,
+                lives: 3,
+                clones: [],
+                trueCloneIndex: -1,
+                spawnTimer: 0,
+                lastSpawn: 0,
+                time: 0,
+                difficulty: 1.0,
+                glowFakeProbability: 0.1 // proba qu'un faux clone ait un glow temporaire
+            };
+
+            // Clones
+            class Clone {
+                constructor(x, y, size, rotation, filter, isTrue = false, lifespan = Infinity) {
+                    this.x = x;
+                    this.y = y;
+                    this.size = size;
+                    this.rotation = rotation;
+                    this.filter = filter;
+                    this.isTrue = isTrue;
+                    this.lifespan = lifespan;
+                    this.age = 0;
+                    this.vx = (Math.random() - 0.5) * 2;
+                    this.vy = (Math.random() - 0.5) * 2;
+                    this.glowTimer = 0; // pour faux glow
+                    this.speechTimer = 0;
+                }
+            }
+
+            // ---------- Synthèse vocale (effets comiques) ----------
+            const speechSynth = window.speechSynthesis;
+            const frenchPhrases = [
+                "C'est pas moi !",
+                "Pourquoi tu me regardes ?",
+                "Non non, regarde ailleurs !",
+                "Je suis le vrai, promis !",
+                "Aïe, mon œil !",
+                "Tu m'as démasqué !",
+                "Même pas mal !",
+                "Oh là là, quelle confusion !"
+            ];
+            function speak(text) {
+                if (!speechSynth) return;
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.lang = 'fr-FR';
+                utterance.rate = 1.2 + Math.random() * 0.8;
+                utterance.pitch = 0.8 + Math.random() * 1.5;
+                utterance.volume = 0.6;
+                speechSynth.speak(utterance);
+            }
+
+            // ---------- Gestion du canvas ----------
+            function resizeCanvas() {
+                const container = document.getElementById('gameContainer');
+                canvas.width = container.clientWidth;
+                canvas.height = container.clientHeight;
+            }
+            window.addEventListener('resize', resizeCanvas);
+            resizeCanvas();
+
+            // ---------- Modes ----------
+            function setMode(mode) {
+                currentMode = mode;
+                modeButtons.forEach(btn => {
+                    btn.classList.toggle('active', btn.dataset.mode === mode);
+                });
+                resetGame();
+            }
+            modeButtons.forEach(btn => {
+                btn.addEventListener('click', () => setMode(btn.dataset.mode));
+            });
+
+            // ---------- Initialisation / Reset ----------
+            function resetGame() {
+                const config = CONFIG[currentMode];
+                gameState.active = true;
+                gameState.score = 0;
+                gameState.lives = config.lives;
+                gameState.clones = [];
+                gameState.trueCloneIndex = -1;
+                gameState.spawnTimer = 0;
+                gameState.lastSpawn = performance.now();
+                gameState.time = 0;
+                gameState.difficulty = 1.0;
+                messageDiv.style.display = 'none';
+                updateUI();
+                spawnTrueClone(); // premier vrai clone
+                // spawn quelques imposteurs initiaux
+                for (let i = 0; i < 5; i++) {
+                    spawnImposter();
+                }
+            }
+
+            function updateUI() {
+                scoreDisplay.textContent = `Score: ${gameState.score}`;
+                if (currentMode === 'survival' || currentMode === 'chaos') {
+                    let hearts = '';
+                    for (let i = 0; i < gameState.lives; i++) hearts += '❤️';
+                    livesDisplay.textContent = hearts || '💀';
+                } else {
+                    livesDisplay.textContent = 'Mode Libre';
+                }
+            }
+
+            function gameOver() {
+                gameState.active = false;
+                messageDiv.style.display = 'block';
+                messageDiv.innerHTML = `Perdu !<br>Score: ${gameState.score}<br><small>Reclique pour recommencer</small>`;
+                // Nettoyage des clones
+                gameState.clones = [];
+            }
+
+            // ---------- Spawn des clones ----------
+            function spawnImposter() {
+                const w = canvas.width;
+                const h = canvas.height;
+                const size = 40 + Math.random() * 80;
+                const x = Math.random() * (w - size) + size/2;
+                const y = Math.random() * (h - size) + size/2;
+                const rotation = (Math.random() - 0.5) * 0.5; // radians
+                // Filtres absurdes
+                const filters = [
+                    'invert(1)',
+                    'hue-rotate(90deg)',
+                    'grayscale(1)',
+                    'sepia(0.8)',
+                    'brightness(1.5)',
+                    'contrast(2)',
+                    'blur(2px)',
+                    'opacity(0.7)',
+                    'saturate(3)',
+                    '' // parfois aucun filtre pour embrouiller
+                ];
+                const filter = filters[Math.floor(Math.random() * filters.length)];
+                const lifespan = 3000 + Math.random() * 5000;
+                const clone = new Clone(x, y, size, rotation, filter, false, lifespan);
+                gameState.clones.push(clone);
+            }
+
+            function spawnTrueClone() {
+                const w = canvas.width;
+                const h = canvas.height;
+                const size = 50 + Math.random() * 60;
+                const x = Math.random() * (w - size) + size/2;
+                const y = Math.random() * (h - size) + size/2;
+                const rotation = (Math.random() - 0.5) * 0.3;
+                // Vrai clone : pas de filtre, glow permanent (géré par dessin)
+                const trueClone = new Clone(x, y, size, rotation, '', true, Infinity);
+                // Supprimer l'ancien vrai s'il existe
+                gameState.clones = gameState.clones.filter(c => !c.isTrue);
+                gameState.clones.push(trueClone);
+                gameState.trueCloneIndex = gameState.clones.length - 1;
+            }
+
+            // ---------- Mise à jour du jeu ----------
+            function update(deltaTime) {
+                if (!gameState.active) return;
+
+                // Augmentation de la difficulté
+                gameState.time += deltaTime;
+                gameState.difficulty = 1.0 + gameState.time / 30000; // plus dur toutes les 30s
+
+                const config = CONFIG[currentMode];
+                const currentMaxClones = Math.floor(config.maxClones + gameState.difficulty * 3);
+                const currentSpawnInterval = Math.max(300, config.spawnInterval / gameState.difficulty);
+
+                // Spawn automatique
+                if (performance.now() - gameState.lastSpawn > currentSpawnInterval) {
+                    if (gameState.clones.filter(c => !c.isTrue).length < currentMaxClones) {
+                        spawnImposter();
+                    }
+                    gameState.lastSpawn = performance.now();
+                }
+
+                // Mise à jour des clones
+                for (let i = gameState.clones.length - 1; i >= 0; i--) {
+                    const clone = gameState.clones[i];
+                    clone.age += deltaTime;
+
+                    // Mouvement erratique
+                    clone.vx += (Math.random() - 0.5) * 0.3;
+                    clone.vy += (Math.random() - 0.5) * 0.3;
+                    const speed = config.speedMultiplier * (1 + gameState.difficulty * 0.1);
+                    const maxSpeed = 2 * speed;
+                    clone.vx = Math.max(-maxSpeed, Math.min(maxSpeed, clone.vx));
+                    clone.vy = Math.max(-maxSpeed, Math.min(maxSpeed, clone.vy));
+                    clone.x += clone.vx;
+                    clone.y += clone.vy;
+
+                    // Rebond sur les bords
+                    const s = clone.size / 2;
+                    if (clone.x - s < 0) { clone.x = s; clone.vx *= -0.8; }
+                    if (clone.x + s > canvas.width) { clone.x = canvas.width - s; clone.vx *= -0.8; }
+                    if (clone.y - s < 0) { clone.y = s; clone.vy *= -0.8; }
+                    if (clone.y + s > canvas.height) { clone.y = canvas.height - s; clone.vy *= -0.8; }
+
+                    // Durée de vie limitée pour les imposteurs (sauf si mode chaos où ils restent plus)
+                    if (!clone.isTrue && clone.lifespan !== Infinity && clone.age > clone.lifespan) {
+                        gameState.clones.splice(i, 1);
+                        if (gameState.trueCloneIndex === i) gameState.trueCloneIndex = -1; // ne devrait pas arriver
+                        continue;
+                    }
+
+                    // Faux glow aléatoire (piège)
+                    if (!clone.isTrue && Math.random() < gameState.glowFakeProbability * 0.01) {
+                        clone.glowTimer = 500; // activer un glow temporaire de 500ms
+                    }
+                    if (clone.glowTimer > 0) clone.glowTimer -= deltaTime;
+
+                    // Parole aléatoire des clones
+                    if (clone.speechTimer <= 0 && Math.random() < 0.002) {
+                        speak(frenchPhrases[Math.floor(Math.random() * frenchPhrases.length)]);
+                        clone.speechTimer = 2000 + Math.random() * 3000;
+                    }
+                    if (clone.speechTimer > 0) clone.speechTimer -= deltaTime;
+                }
+
+                // Vérifier si le vrai clone est toujours présent (sécurité)
+                if (!gameState.clones.some(c => c.isTrue)) {
+                    spawnTrueClone();
+                }
+
+                updateUI();
+            }
+
+            // ---------- Dessin ----------
+            function draw() {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                // Fond animé léger
+                ctx.fillStyle = '#1a1a2e';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = 'rgba(255,0,255,0.03)';
+                for (let i = 0; i < 20; i++) {
+                    ctx.beginPath();
+                    ctx.arc(
+                        Math.random() * canvas.width,
+                        Math.random() * canvas.height,
+                        Math.random() * 50 + 10,
+                        0, Math.PI*2
+                    );
+                    ctx.fill();
+                }
+
+                if (!imageLoaded) {
+                    ctx.fillStyle = 'white';
+                    ctx.font = '20px monospace';
+                    ctx.textAlign = 'center';
+                    ctx.fillText('Chargement du visage...', canvas.width/2, canvas.height/2);
+                    return;
+                }
+
+                // Dessiner chaque clone
+                for (const clone of gameState.clones) {
+                    ctx.save();
+                    ctx.translate(clone.x, clone.y);
+                    ctx.rotate(clone.rotation);
+
+                    // Appliquer le filtre (pour les imposteurs ou si faux glow)
+                    let appliedFilter = clone.filter;
+                    if (!clone.isTrue && clone.glowTimer > 0) {
+                        appliedFilter = ''; // enlève le filtre pour tromper
+                    }
+                    if (appliedFilter) {
+                        ctx.filter = appliedFilter;
+                    }
+
+                    // Dessiner l'image du visage centrée
+                    const s = clone.size;
+                    ctx.drawImage(faceImage, -s/2, -s/2, s, s);
+
+                    // Si c'est le vrai, ajouter un glow distinctif
+                    if (clone.isTrue) {
+                        ctx.filter = 'none'; // on enlève le filtre pour le glow
+                        // Halo lumineux
+                        const gradient = ctx.createRadialGradient(0, 0, s*0.3, 0, 0, s*0.8);
+                        gradient.addColorStop(0, 'rgba(0, 255, 255, 0.8)');
+                        gradient.addColorStop(0.5, 'rgba(0, 255, 255, 0.3)');
+                        gradient.addColorStop(1, 'rgba(0, 255, 255, 0)');
+                        ctx.fillStyle = gradient;
+                        ctx.fillRect(-s*0.8, -s*0.8, s*1.6, s*1.6);
+                        // Contour léger
+                        ctx.strokeStyle = '#00ffff';
+                        ctx.lineWidth = 3;
+                        ctx.strokeRect(-s/2-2, -s/2-2, s+4, s+4);
+                    } else if (clone.glowTimer > 0) {
+                        // Faux glow
+                        ctx.filter = 'none';
+                        const gradient = ctx.createRadialGradient(0, 0, s*0.3, 0, 0, s*0.7);
+                        gradient.addColorStop(0, 'rgba(255, 255, 0, 0.6)');
+                        gradient.addColorStop(1, 'rgba(255, 255, 0, 0)');
+                        ctx.fillStyle = gradient;
+                        ctx.fillRect(-s*0.7, -s*0.7, s*1.4, s*1.4);
+                    }
+
+                    ctx.restore();
+                }
+            }
+
+            // ---------- Gestion des clics ----------
+            function handleClick(e) {
+                if (!gameState.active) {
+                    // Relancer après game over
+                    if (messageDiv.style.display === 'block') {
+                        resetGame();
+                    }
+                    return;
+                }
+
+                const rect = canvas.getBoundingClientRect();
+                const scaleX = canvas.width / rect.width;
+                const scaleY = canvas.height / rect.height;
+                const mouseX = (e.clientX - rect.left) * scaleX;
+                const mouseY = (e.clientY - rect.top) * scaleY;
+
+                // Chercher le clone cliqué (le plus en avant, celui avec le plus grand index)
+                let clickedClone = null;
+                let clickedIndex = -1;
+                for (let i = gameState.clones.length - 1; i >= 0; i--) {
+                    const c = gameState.clones[i];
+                    const dx = mouseX - c.x;
+                    const dy = mouseY - c.y;
+                    const dist = Math.sqrt(dx*dx + dy*dy);
+                    if (dist < c.size / 2) {
+                        clickedClone = c;
+                        clickedIndex = i;
+                        break;
+                    }
+                }
+
+                if (!clickedClone) return; // clic dans le vide
+
+                if (clickedClone.isTrue) {
+                    // Bon clic !
+                    gameState.score += Math.floor(10 + gameState.difficulty * 5);
+                    speak("Oui, c'est moi !");
+                    // Supprimer le vrai et en faire apparaître un nouveau
+                    gameState.clones.splice(clickedIndex, 1);
+                    spawnTrueClone();
+                    // Bonus : ajouter un peu de chaos
+                    if (currentMode === 'chaos') {
+                        for (let i = 0; i < 3; i++) spawnImposter();
+                    }
+                } else {
+                    // Mauvais clic
+                    gameState.lives--;
+                    speak(frenchPhrases[Math.floor(Math.random() * frenchPhrases.length)]);
+                    // Effet visuel : flash rouge ?
+                    if (currentMode === 'survival' || currentMode === 'chaos') {
+                        if (gameState.lives <= 0) {
+                            gameOver();
+                        }
+                    } else {
+                        // Mode classique : score réduit mais pas de game over
+                        gameState.score = Math.max(0, gameState.score - 5);
+                    }
+                    // L'imposteur cliqué peut être retiré ou pas (on le laisse pour le chaos)
+                    if (currentMode === 'classic') {
+                        gameState.clones.splice(clickedIndex, 1);
+                    }
+                }
+                updateUI();
+            }
+
+            canvas.addEventListener('click', handleClick);
+
+            // ---------- Drag & Drop pour changer de visage ----------
+            const dropZone = document.getElementById('gameContainer');
+            dropZone.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                dropZone.classList.add('active');
+            });
+            dropZone.addEventListener('dragleave', () => {
+                dropZone.classList.remove('active');
+            });
+            dropZone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                dropZone.classList.remove('active');
+                const file = e.dataTransfer.files[0];
+                if (file && file.type.startsWith('image/')) {
+                    const reader = new FileReader();
+                    reader.onload = (ev) => {
+                        faceImage = new Image();
+                        faceImage.onload = () => {
+                            imageLoaded = true;
+                            resetGame();
+                        };
+                        faceImage.src = ev.target.result;
+                    };
+                    reader.readAsDataURL(file);
+                }
+            });
+
+            // ---------- Boucle de jeu ----------
+            let lastTimestamp = 0;
+            function gameLoop(timestamp) {
+                const deltaTime = lastTimestamp ? timestamp - lastTimestamp : 16;
+                lastTimestamp = timestamp;
+                if (gameState.active) {
+                    update(deltaTime);
+                }
+                draw();
+                requestAnimationFrame(gameLoop);
+            }
+
+            // Démarrage
+            imageLoaded = false; // sera réglé par onload
+            // Si fallback déjà prêt
+            faceImage.onload = () => { imageLoaded = true; resetGame(); };
+            faceImage.onerror = () => {}; // géré plus haut
+            // Si l'image était déjà en cache
+            if (faceImage.complete && faceImage.naturalWidth !== 0) {
+                imageLoaded = true;
+                resetGame();
+            }
+            requestAnimationFrame(gameLoop);
+
+            // Message d'accroche
+            messageDiv.style.display = 'block';
+            messageDiv.innerHTML = 'Saad vs Clones<br><small>Clique sur le vrai visage !</small>';
+            setTimeout(() => {
+                if (gameState.active) messageDiv.style.display = 'none';
+            }, 2000);
+        })();
+    </script>
+</body>
+</html>
