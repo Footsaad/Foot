@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tirs au But - Pénalty App</title>
+  <!-- PWA -->
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#1e3c32">
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js');
+      });
+    }
+  </script>
+  <style>
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: linear-gradient(135deg, #1e3c32, #2a4a3f);
+      color: white;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      margin: 0;
+    }
+    .container {
+      background: rgba(0,0,0,0.6);
+      border-radius: 20px;
+      padding: 2rem;
+      width: 90%;
+      max-width: 600px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+      text-align: center;
+    }
+    h1 {
+      font-size: 2.2rem;
+      margin-bottom: 0.2rem;
+    }
+    .teams {
+      display: flex;
+      justify-content: space-between;
+      margin: 1rem 0;
+      gap: 1rem;
+    }
+    .team {
+      background: rgba(255,255,255,0.1);
+      border-radius: 12px;
+      padding: 1rem;
+      width: 45%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .team h2 {
+      margin: 0 0 0.5rem;
+      font-size: 1.4rem;
+    }
+    .score {
+      font-size: 3rem;
+      font-weight: bold;
+      margin: 0.2rem 0;
+    }
+    /* Avatar */
+    .avatar-wrapper {
+      position: relative;
+      width: 60px;
+      height: 60px;
+      margin: 0.5rem auto;
+      cursor: pointer;
+    }
+    .avatar {
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      object-fit: cover;
+      border: 2px solid white;
+      background: #555;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.8rem;
+      color: white;
+      transition: 0.2s;
+    }
+    .avatar:hover {
+      transform: scale(1.05);
+      border-color: gold;
+    }
+    .avatar-placeholder {
+      background: #777;
+      color: white;
+      font-size: 2rem;
+      font-weight: bold;
+    }
+    .turn-indicator {
+      background: gold;
+      color: #1e3c32;
+      padding: 0.3rem 1rem;
+      border-radius: 20px;
+      font-weight: bold;
+      display: inline-block;
+      margin: 0.5rem 0;
+    }
+    .action-area {
+      background: rgba(255,255,255,0.15);
+      border-radius: 16px;
+      padding: 1.2rem;
+      margin: 1rem 0;
+    }
+    .direction-buttons {
+      display: flex;
+      justify-content: center;
+      gap: 1rem;
+      flex-wrap: wrap;
+      margin: 1rem 0;
+    }
+    .btn {
+      background: #f0a500;
+      border: none;
+      color: #1e3c32;
+      padding: 0.8rem 1.4rem;
+      border-radius: 30px;
+      font-size: 1.1rem;
+      font-weight: bold;
+      cursor: pointer;
+      transition: all 0.2s;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+    }
+    .btn:hover {
+      background: #fcc419;
+      transform: translateY(-2px);
+    }
+    .btn:active {
+      transform: translateY(0);
+    }
+    .result-message {
+      font-size: 1.3rem;
+      margin: 0.8rem 0;
+      min-height: 2rem;
+      font-weight: bold;
+    }
+    .shoot-history {
+      display: flex;
+      justify-content: center;
+      gap: 0.5rem;
+      margin: 1rem 0;
+      flex-wrap: wrap;
+    }
+    .circle {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: gray;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+      font-size: 0.8rem;
+    }
+    .circle.goal {
+      background: #2ecc71;
+    }
+    .circle.save {
+      background: #e74c3c;
+    }
+    .reset-btn {
+      background: #c0392b;
+      color: white;
+      margin-top: 1rem;
+    }
+    .reset-btn:hover {
+      background: #e74c3c;
+    }
+    input[type="file"] {
+      display: none;
+    }
+    .team-name {
+      display: flex;
+      align-items: center;
+      gap: 0.3rem;
+      justify-content: center;
+    }
+    .team-name h2 {
+      margin: 0;
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+  <h1>⚽ Tirs au But</h1>
+  <div class="teams">
+    <!-- Équipe A -->
+    <div class="team" id="teamA">
+      <div class="avatar-wrapper" id="avatarAWrapper">
+        <div class="avatar avatar-placeholder" id="avatarAImg">👤</div>
+      </div>
+      <div class="team-name">
+        <h2 contenteditable="true" id="teamAName">Équipe A</h2>
+      </div>
+      <div class="score" id="scoreA">0</div>
+      <input type="file" id="fileInputA" accept="image/*" hidden>
+    </div>
+
+    <!-- Équipe B -->
+    <div class="team" id="teamB">
+      <div class="avatar-wrapper" id="avatarBWrapper">
+        <div class="avatar avatar-placeholder" id="avatarBImg">👤</div>
+      </div>
+      <div class="team-name">
+        <h2 contenteditable="true" id="teamBName">Équipe B</h2>
+      </div>
+      <div class="score" id="scoreB">0</div>
+      <input type="file" id="fileInputB" accept="image/*" hidden>
+    </div>
+  </div>
+  <div class="turn-indicator" id="turnIndicator">⚽ Tir de l'Équipe A</div>
+  <div class="action-area" id="actionArea">
+    <p id="instruction">Choisis la direction du tir</p>
+    <div class="direction-buttons" id="shootButtons">
+      <button class="btn" onclick="playerShoot('gauche')">⬅️ Gauche</button>
+      <button class="btn" onclick="playerShoot('centre')">⬆️ Centre</button>
+      <button class="btn" onclick="playerShoot('droite')">➡️ Droite</button>
+    </div>
+    <div class="direction-buttons" id="keeperButtons" style="display:none;">
+      <p>🧤 Le gardien plonge :</p>
+      <button class="btn" onclick="keeperDive('gauche')">⬅️ Gauche</button>
+      <button class="btn" onclick="keeperDive('centre')">⬆️ Centre</button>
+      <button class="btn" onclick="keeperDive('droite')">➡️ Droite</button>
+    </div>
+    <div class="result-message" id="resultMessage"></div>
+  </div>
+  <div class="shoot-history" id="history"></div>
+  <button class="btn reset-btn" onclick="resetGame()">🔄 Nouveau match</button>
+</div>
+
+<script>
+  // État du jeu
+  let teamA = { name: "Équipe A", score: 0, shots: [] };
+  let teamB = { name: "Équipe B", score: 0, shots: [] };
+  let currentShooterTeam = 'A';
+  let currentKeeperTeam = 'B';
+  let shotNumber = 0;
+  const MAX_SHOTS = 5;
+  let phase = 'shoot';
+  let currentShootDirection = null;
+  let suddenDeath = false;
+  let suddenDeathRound = 0;
+
+  // Gestion des avatars
+  const avatarA = document.getElementById('avatarAImg');
+  const avatarB = document.getElementById('avatarBImg');
+  const fileInputA = document.getElementById('fileInputA');
+  const fileInputB = document.getElementById('fileInputB');
+
+  function setupAvatar(wrapper, imgElement, fileInput) {
+    wrapper.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          imgElement.style.backgroundImage = `url(${event.target.result})`;
+          imgElement.style.backgroundSize = 'cover';
+          imgElement.style.backgroundPosition = 'center';
+          imgElement.innerHTML = ''; // retire l'emoji
+          imgElement.classList.remove('avatar-placeholder');
+        };
+        reader.readAsDataURL(file);
+      } else {
+        resetAvatar(imgElement);
+      }
+    });
+  }
+
+  function resetAvatar(imgElement) {
+    imgElement.style.backgroundImage = '';
+    imgElement.innerHTML = '👤';
+    imgElement.classList.add('avatar-placeholder');
+  }
+
+  setupAvatar(document.getElementById('avatarAWrapper'), avatarA, fileInputA);
+  setupAvatar(document.getElementById('avatarBWrapper'), avatarB, fileInputB);
+
+  function updateUI() {
+    document.getElementById('scoreA').textContent = teamA.score;
+    document.getElementById('scoreB').textContent = teamB.score;
+    document.getElementById('teamAName').textContent = teamA.name;
+    document.getElementById('teamBName').textContent = teamB.name;
+
+    const shooterName = currentShooterTeam === 'A' ? teamA.name : teamB.name;
+    document.getElementById('turnIndicator').textContent = `⚽ Tir de ${shooterName}`;
+
+    if (phase === 'shoot') {
+      document.getElementById('shootButtons').style.display = 'flex';
+      document.getElementById('keeperButtons').style.display = 'none';
+      document.getElementById('instruction').textContent = `Choisis la direction du tir pour ${shooterName}`;
+    } else if (phase === 'dive') {
+      document.getElementById('shootButtons').style.display = 'none';
+      document.getElementById('keeperButtons').style.display = 'flex';
+      const keeperName = currentKeeperTeam === 'A' ? teamA.name : teamB.name;
+      document.getElementById('instruction').textContent = `🧤 ${keeperName} : où plonge le gardien ?`;
+    }
+
+    const historyDiv = document.getElementById('history');
+    historyDiv.innerHTML = '';
+    const maxLen = Math.max(teamA.shots.length, teamB.shots.length);
+    for (let i = 0; i < maxLen; i++) {
+      if (teamA.shots[i] !== undefined) {
+        const circle = document.createElement('div');
+        circle.className = `circle ${teamA.shots[i] ? 'goal' : 'save'}`;
+        circle.textContent = 'A'+(i+1);
+        historyDiv.appendChild(circle);
+      }
+      if (teamB.shots[i] !== undefined) {
+        const circle = document.createElement('div');
+        circle.className = `circle ${teamB.shots[i] ? 'goal' : 'save'}`;
+        circle.textContent = 'B'+(i+1);
+        historyDiv.appendChild(circle);
+      }
+    }
+
+    checkEndGame();
+  }
+
+  function playerShoot(direction) {
+    if (phase !== 'shoot') return;
+    currentShootDirection = direction;
+    phase = 'dive';
+    updateUI();
+    document.getElementById('resultMessage').textContent = '';
+  }
+
+  function keeperDive(diveDirection) {
+    if (phase !== 'dive') return;
+    const isGoal = (currentShootDirection !== diveDirection);
+    document.getElementById('resultMessage').textContent = isGoal ? '⚽ BUUUUT !' : '🧤 ARRÊT DU GARDIEN !';
+
+    if (currentShooterTeam === 'A') {
+      teamA.shots.push(isGoal);
+      if (isGoal) teamA.score++;
+    } else {
+      teamB.shots.push(isGoal);
+      if (isGoal) teamB.score++;
+    }
+
+    shotNumber++;
+    if (currentShooterTeam === 'A') {
+      currentShooterTeam = 'B';
+      currentKeeperTeam = 'A';
+    } else {
+      currentShooterTeam = 'A';
+      currentKeeperTeam = 'B';
+    }
+
+    if (suddenDeath) {
+      suddenDeathRound++;
+      phase = 'shoot';
+      updateUI();
+      return;
+    }
+
+    if (teamA.shots.length === MAX_SHOTS && teamB.shots.length === MAX_SHOTS) {
+      if (teamA.score !== teamB.score) {
+        phase = 'end';
+        updateUI();
+        showWinner();
+      } else {
+        startSuddenDeath();
+      }
+    } else {
+      phase = 'shoot';
+      updateUI();
+    }
+  }
+
+  function startSuddenDeath() {
+    suddenDeath = true;
+    suddenDeathRound = 0;
+    document.getElementById('turnIndicator').textContent = '🔥 MORT SUBITE !';
+    phase = 'shoot';
+    updateUI();
+  }
+
+  function checkEndGame() {
+    if (!suddenDeath) return;
+    if (teamA.shots.length === teamB.shots.length && teamA.score !== teamB.score) {
+      phase = 'end';
+      updateUI();
+      showWinner();
+    }
+  }
+
+  function showWinner() {
+    let winner;
+    if (teamA.score > teamB.score) winner = teamA.name;
+    else if (teamB.score > teamA.score) winner = teamB.name;
+    if (winner) {
+      document.getElementById('resultMessage').textContent = `🏆 ${winner} remporte la séance de tirs au but !`;
+      document.getElementById('turnIndicator').textContent = 'Match terminé';
+    }
+    document.getElementById('shootButtons').style.display = 'none';
+    document.getElementById('keeperButtons').style.display = 'none';
+    document.getElementById('instruction').textContent = 'Félicitations !';
+  }
+
+  function resetGame() {
+    teamA.score = 0;
+    teamA.shots = [];
+    teamB.score = 0;
+    teamB.shots = [];
+    currentShooterTeam = 'A';
+    currentKeeperTeam = 'B';
+    shotNumber = 0;
+    phase = 'shoot';
+    suddenDeath = false;
+    suddenDeathRound = 0;
+    document.getElementById('resultMessage').textContent = '';
+    updateUI();
+  }
+
+  document.getElementById('teamAName').addEventListener('input', function(e) {
+    teamA.name = e.target.textContent.trim() || 'Équipe A';
+  });
+  document.getElementById('teamBName').addEventListener('input', function(e) {
+    teamB.name = e.target.textContent.trim() || 'Équipe B';
+  });
+
+  updateUI();
+</script>
+</body>
+</html>
